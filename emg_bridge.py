@@ -40,7 +40,7 @@ from pydantic import BaseModel
 # Konfigurasi -- sesuaikan sebelum menjalankan
 # ============================================
 
-SERIAL_PORT = "COM5"           # ganti sesuai port XIAO nRF52840 Anda
+SERIAL_PORT = "COM3"           # ganti sesuai port XIAO nRF52840 Anda
 SERIAL_BAUDRATE = 115200
 NEXTJS_BASE_URL = "http://localhost:3000"
 LOCAL_API_PORT = 8000
