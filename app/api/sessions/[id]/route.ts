@@ -64,6 +64,14 @@ export async function PATCH(
                                       data.completedAt = new Date()
   }
 
+  // Participant bio fields (editable from SessionHistory modal)
+  if ('participantId' in body)   data.participantId   = body.participantId   || null
+  if ('participantName' in body) data.participantName = body.participantName || null
+  if ('age' in body)             data.age             = body.age != null ? Number(body.age) : null
+  if ('gender' in body)          data.gender          = body.gender          || null
+  if ('dominantHand' in body)    data.dominantHand    = body.dominantHand    || null
+  if ('condition' in body)       data.condition       = body.condition       || null
+
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'No valid fields provided' }, { status: 400 })
   }

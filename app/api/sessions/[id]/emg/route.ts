@@ -98,7 +98,7 @@ export async function POST(
   // Pastikan session memang ada sebelum insert
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { id: true },
+    select: { id: true, gesture: { select: { name: true } } },
   })
   if (!session) {
     return NextResponse.json(
@@ -111,6 +111,7 @@ export async function POST(
     const result = await prisma.emgRecord.createMany({
       data: body.samples.map((s) => ({
         sessionId,
+        gesture: session.gesture.name,
         sampleIndex: s.sampleIndex,
         elapsedMs: s.elapsedMs,
         phase: s.phase as Phase,
@@ -124,7 +125,7 @@ export async function POST(
   } catch (err) {
     console.error('Gagal bulk insert EmgRecord:', err)
     return NextResponse.json(
-      { error: 'Gagal menyimpan batch ke database' },
+      { error: 'Gagal menyimpan batch ke database', details: err instanceof Error ? err.message : String(err) },
       { status: 500 }
     )
   }
