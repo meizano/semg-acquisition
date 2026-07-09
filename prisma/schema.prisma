@@ -69,9 +69,9 @@ model Session {
   dominantHand    String?
   condition       String?
   gestureId       String
-  gesture         Gesture       @relation(fields: [gestureId], references: [id])
+  gesture         Gesture       @relation(fields: [gestureId], references: [id], onDelete: Cascade)
   configId        String
-  config          SessionConfig @relation(fields: [configId], references: [id])
+  config          SessionConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
   status          String        @default("pending")
   startedAt       DateTime?
   completedAt     DateTime?
@@ -116,6 +116,9 @@ model EmgRecord {
   // sessions up to ~24 days (Int 32-bit max ~2.1 billion ms).
   elapsedMs   Int
 
+  // Gesture that was selected for this session
+  gesture     String   @default("Unknown")
+
   // Supervised learning label: which phase of the gesture protocol this
   // sample belongs to.
   phase       Phase
@@ -129,20 +132,20 @@ model EmgRecord {
 
   // Raw signal per channel (6 channels from "Hello SEMG by Cheez").
   // r1..r6 correspond to PINS[0..5] (A0..A5) in the firmware.
-  r1 Float
-  r2 Float
-  r3 Float
-  r4 Float
-  r5 Float
-  r6 Float
+  r1 Float  @db.DoublePrecision
+  r2 Float  @db.DoublePrecision
+  r3 Float  @db.DoublePrecision
+  r4 Float  @db.DoublePrecision
+  r5 Float  @db.DoublePrecision
+  r6 Float  @db.DoublePrecision
 
   // Processed/envelope signal per channel, same channel order as r1..r6.
-  p1 Float
-  p2 Float
-  p3 Float
-  p4 Float
-  p5 Float
-  p6 Float
+  p1 Float  @db.DoublePrecision
+  p2 Float  @db.DoublePrecision
+  p3 Float  @db.DoublePrecision
+  p4 Float  @db.DoublePrecision
+  p5 Float  @db.DoublePrecision
+  p6 Float  @db.DoublePrecision
 
   // Wall-clock time when the row was inserted (metadata only -- not the
   // source of truth for ordering; use sampleIndex/elapsedMs for that).
