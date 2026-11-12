@@ -107,10 +107,12 @@ export async function updateConfig(id: string, formData: FormData) {
   const actionDuration = parseInt(formData.get('actionDuration') as string)
   const restDuration = parseInt(formData.get('restDuration') as string)
   const repetitionCount = parseInt(formData.get('repetitionCount') as string)
+  const morningCutoffHour = formData.get('morningCutoffHour') ? parseInt(formData.get('morningCutoffHour') as string) : 12
+  const minRestIntervalHours = formData.get('minRestIntervalHours') ? parseFloat(formData.get('minRestIntervalHours') as string) : 4.0
 
   await prisma.sessionConfig.update({
     where: { id },
-    data: { name, preparationDuration, actionDuration, restDuration, repetitionCount },
+    data: { name, preparationDuration, actionDuration, restDuration, repetitionCount, morningCutoffHour, minRestIntervalHours },
   })
 
   revalidatePath('/admin/config')
@@ -125,6 +127,8 @@ export async function createConfig(formData: FormData) {
   const actionDuration = parseInt(formData.get('actionDuration') as string)
   const restDuration = parseInt(formData.get('restDuration') as string)
   const repetitionCount = parseInt(formData.get('repetitionCount') as string)
+  const morningCutoffHour = formData.get('morningCutoffHour') ? parseInt(formData.get('morningCutoffHour') as string) : 12
+  const minRestIntervalHours = formData.get('minRestIntervalHours') ? parseFloat(formData.get('minRestIntervalHours') as string) : 4.0
 
   // Deactivate others
   await prisma.sessionConfig.updateMany({
@@ -133,7 +137,7 @@ export async function createConfig(formData: FormData) {
   })
 
   await prisma.sessionConfig.create({
-    data: { name, preparationDuration, actionDuration, restDuration, repetitionCount, isActive: true },
+    data: { name, preparationDuration, actionDuration, restDuration, repetitionCount, morningCutoffHour, minRestIntervalHours, isActive: true },
   })
 
   revalidatePath('/admin/config')

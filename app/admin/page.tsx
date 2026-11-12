@@ -1,7 +1,8 @@
 import { prisma } from '@/app/lib/prisma'
 import { ensureAdmin } from '@/app/lib/auth'
 import Link from 'next/link'
-import { Hand, BarChart3, CheckCircle2, RotateCw } from 'lucide-react'
+import { Hand, BarChart3, CheckCircle2, RotateCw, Layers, Activity } from 'lucide-react'
+import HardwareStatusCard from '@/app/components/admin/HardwareStatusCard'
 
 export default async function AdminDashboard() {
   await ensureAdmin()
@@ -91,6 +92,44 @@ export default async function AdminDashboard() {
             </div>
           </Link>
         ))}
+      </div>
+
+      {/* Live Hardware & Bridge Status Monitor */}
+      <HardwareStatusCard />
+
+      {/* Quick Access Protocols: Rekap 24 Gesture & Audit */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Link
+          href="/admin/participants"
+          className="glass-card p-5 border-l-4 border-amber-400 flex items-center justify-between hover:scale-[1.01] transition-all"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-300">
+              <Layers size={22} />
+            </div>
+            <div>
+              <h3 className="text-base font-extrabold text-white">Rekap 24 Gesture Partisipan</h3>
+              <p className="text-xs text-white/60">Kelola 12 Sesi Pagi & 12 Sesi Sore serta jeda 4 jam</p>
+            </div>
+          </div>
+          <span className="text-xs font-bold text-amber-300">Buka Portal ➔</span>
+        </Link>
+
+        <Link
+          href="/admin/status"
+          className="glass-card p-5 border-l-4 border-teal-400 flex items-center justify-between hover:scale-[1.01] transition-all"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center text-teal-300">
+              <Activity size={22} />
+            </div>
+            <div>
+              <h3 className="text-base font-extrabold text-white">Audit Kelengkapan Sinyal</h3>
+              <p className="text-xs text-white/60">Cek keaktifan fase ACTION @200Hz seluruh gesture</p>
+            </div>
+          </div>
+          <span className="text-xs font-bold text-teal-300">Lihat Audit ➔</span>
+        </Link>
       </div>
 
       {/* Active Config */}

@@ -121,6 +121,11 @@ export async function POST(
       })),
     })
 
+    const g = globalThis as unknown as { lastEmgBatchAt?: number; lastEmgBatchCount?: number; lastEmgSessionId?: string }
+    g.lastEmgBatchAt = Date.now()
+    g.lastEmgBatchCount = result.count
+    g.lastEmgSessionId = sessionId
+
     return NextResponse.json({ inserted: result.count }, { status: 201 })
   } catch (err) {
     console.error('Gagal bulk insert EmgRecord:', err)

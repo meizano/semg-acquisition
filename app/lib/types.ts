@@ -65,6 +65,7 @@ export interface ExportData {
   gender?: string | null
   dominantHand?: string | null
   condition?: string | null
+  sessionTime?: string | null
   gestureName: string
   gestureLabel: string
   events: {
@@ -73,5 +74,25 @@ export interface ExportData {
     timestamp: string
     clientTimestamp: string
     metadata: Record<string, unknown> | null
+  }[]
+  emgRecords?: {
+    sampleIndex: number
+    elapsedMs: number
+    phase: string
+    isTransition: boolean
+    gesture?: string | null
+    r1: number
+    r2: number
+    r3: number
+    r4: number
+    r5: number
+    r6: number
+    p1: number
+    p2: number
+    p3: number
+    p4: number
+    p5: number
+    p6: number
+    timestamp: string
   }[]
 }

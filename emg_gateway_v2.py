@@ -50,8 +50,11 @@ import struct
 import sys
 from collections import deque
 
+# pyrefly: ignore[missing-import]
 import httpx
+# pyrefly: ignore[missing-import]
 from bleak import BleakClient, BleakScanner
+# pyrefly: ignore[missing-import]
 from bleak.backends.characteristic import BleakGATTCharacteristic
 
 # ---- Must match the firmware exactly ----

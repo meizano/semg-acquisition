@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import Link from 'next/link'
 import {
   Play,
   Square,
@@ -14,6 +15,8 @@ import {
   Monitor,
   Copy,
   Check,
+  ChevronRight,
+  ChevronLeft,
 } from 'lucide-react'
 import type { SessionStatus } from '@/app/lib/types'
 
@@ -31,6 +34,13 @@ interface SessionControllerProps {
     actionDuration: number
     restDuration: number
     repetitionCount: number
+  }
+  sequence?: {
+    currentGestureIndex: number
+    totalGestures: number
+    completedGestures: number
+    nextSessionId: string | null
+    prevSessionId: string | null
   }
 }
 
@@ -58,6 +68,7 @@ export default function SessionController({
   gestureLabel,
   participantName,
   config,
+  sequence,
 }: SessionControllerProps) {
   const [status, setStatus]             = useState<SessionStatus>('pending')
   const [loading, setLoading]           = useState<'start' | 'abort' | null>(null)
@@ -198,6 +209,44 @@ export default function SessionController({
         </div>
       </div>
 
+      {/* ── Sequence Navigation Banner ────────────────────────────────── */}
+      {sequence && sequence.totalGestures > 1 && (
+        <div className="flex items-center justify-between p-3.5 rounded-xl bg-teal-500/10 border border-teal-500/30">
+          <div className="flex items-center gap-2">
+            <span className="text-xs uppercase tracking-wider font-bold text-teal-400">Rangkaian Sesi:</span>
+            <span className="text-sm font-extrabold text-white">
+              Gesture {sequence.currentGestureIndex} dari {sequence.totalGestures}
+            </span>
+            <span className="text-xs text-white/60 font-medium">
+              ({sequence.completedGestures} selesai)
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {sequence.prevSessionId && (
+              <Link
+                href={`/admin/sessions/${sequence.prevSessionId}`}
+                className="btn btn-ghost text-xs py-1 px-2.5 border border-white/10 flex items-center gap-1 text-white/80 hover:text-white"
+                title="Buka sesi sebelumnya"
+              >
+                <ChevronLeft size={14} />
+                Sebelumnya
+              </Link>
+            )}
+            {sequence.nextSessionId && (
+              <Link
+                href={`/admin/sessions/${sequence.nextSessionId}`}
+                className="btn btn-ghost text-xs py-1 px-2.5 text-teal-300 border border-teal-500/30 flex items-center gap-1 hover:border-teal-400"
+                title="Buka sesi berikutnya"
+              >
+                Berikutnya
+                <ChevronRight size={14} />
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Participant screen link ────────────────────────────────────────── */}
       <div
         className="rounded-xl p-4 space-y-3"
@@ -286,12 +335,23 @@ export default function SessionController({
 
       {/* ── Control buttons ───────────────────────────────────────────────── */}
       {isTerminal ? (
-        <div
-          className="flex items-center justify-center gap-2 rounded-xl py-4 text-sm"
-          style={{ background: 'var(--bg-primary)', color: 'var(--text-muted)' }}
-        >
-          <meta.Icon className="w-4 h-4" />
-          Sesi telah {meta.label.toLowerCase()}. Tidak ada aksi lebih lanjut.
+        <div className="space-y-3">
+          <div
+            className="flex items-center justify-center gap-2 rounded-xl py-4 text-sm"
+            style={{ background: 'var(--bg-primary)', color: 'var(--text-muted)' }}
+          >
+            <meta.Icon className="w-4 h-4" />
+            Sesi telah {meta.label.toLowerCase()}. Tidak ada aksi lebih lanjut pada gesture ini.
+          </div>
+
+          {sequence?.nextSessionId && (
+            <Link
+              href={`/admin/sessions/${sequence.nextSessionId}`}
+              className="btn btn-primary w-full py-3.5 text-sm font-bold flex items-center justify-center gap-2 shadow-lg hover:scale-102 transition-all"
+            >
+              Lanjut ke Kontrol Sesi Gesture Berikutnya ({sequence.currentGestureIndex + 1}/{sequence.totalGestures}) →
+            </Link>
+          )}
         </div>
       ) : (
         <div className="flex gap-3">

@@ -70,6 +70,9 @@ class BridgeState:
     transition_guard_remaining: int = 0
     sample_index: int = 0
     session_start_perf: Optional[float] = None  # time.perf_counter() saat SESSION_START
+    serial_connected: bool = False
+    last_sample_time: Optional[float] = None
+    total_samples_received: int = 0
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def set_session(self, session_id: str):
@@ -180,8 +183,22 @@ def phase_update(req: PhaseUpdateRequest):
 
 @app.get("/health")
 def health():
+    now = time.time()
+    last_ago = round(now - state.last_sample_time, 1) if state.last_sample_time else None
+    # Sinyal dianggap aktif hanya jika sample terakhir masuk dalam 2.5 detik terakhir
+    is_streaming = (last_ago is not None and last_ago < 2.5)
+    # Alat dianggap hidup/terhubung hanya jika port USB terbuka DAN sinyal benar-benar mengalir
+    device_active = state.serial_connected and is_streaming
     return {
         "ok": True,
+        "bridgeRunning": True,
+        "serialConnected": device_active,
+        "portOpened": state.serial_connected,
+        "isStreaming": is_streaming,
+        "lastSampleAgoSec": last_ago,
+        "totalSamplesReceived": state.total_samples_received,
+        "port": SERIAL_PORT,
+        "baudrate": SERIAL_BAUDRATE,
         "sessionId": state.session_id,
         "currentPhase": state.current_phase,
         "bufferSize": len(batch_buffer),
@@ -247,30 +264,60 @@ def flush_batch(force: bool = False):
 
 
 def serial_reader_loop():
-    print(f"[bridge] Membuka Serial port {SERIAL_PORT} @ {SERIAL_BAUDRATE}...")
-    ser = serial.Serial(SERIAL_PORT, SERIAL_BAUDRATE, timeout=1)
     last_flush = time.perf_counter()
 
     while True:
-        raw_line = ser.readline().decode("utf-8", errors="ignore")
-        if not raw_line:
-            pass  # timeout baca, lanjut loop (juga jadi titik cek flush interval)
-        else:
-            sample_values = parse_serial_line(raw_line)
-            if sample_values is None:
-                print(f"[bridge] Baris Serial tidak cocok format, dilewati: {raw_line!r}")
-            else:
-                meta = state.next_sample_meta()
-                if meta is not None:
-                    with batch_lock:
-                        batch_buffer.append({**meta, **sample_values})
+        ser = None
+        try:
+            print(f"[bridge] Mencoba membuka Serial port {SERIAL_PORT} @ {SERIAL_BAUDRATE}...")
+            ser = serial.Serial(SERIAL_PORT, SERIAL_BAUDRATE, timeout=1)
+            with state.lock:
+                state.serial_connected = True
+            print(f"[bridge] Serial port {SERIAL_PORT} berhasil terhubung! Menunggu aliran sinyal...")
 
-        now = time.perf_counter()
-        if now - last_flush >= BATCH_FLUSH_INTERVAL_S:
-            flush_batch(force=False)
-            last_flush = now
-        else:
-            flush_batch(force=False)  # no-op kalau belum capai BATCH_SIZE
+            while True:
+                raw_line = ser.readline().decode("utf-8", errors="ignore")
+                if raw_line:
+                    sample_values = parse_serial_line(raw_line)
+                    if sample_values is not None:
+                        now_time = time.time()
+                        with state.lock:
+                            state.last_sample_time = now_time
+                            state.total_samples_received += 1
+                            state.serial_connected = True
+
+                        meta = state.next_sample_meta()
+                        if meta is not None:
+                            with batch_lock:
+                                batch_buffer.append({**meta, **sample_values})
+
+                now = time.perf_counter()
+                if now - last_flush >= BATCH_FLUSH_INTERVAL_S:
+                    flush_batch(force=False)
+                    last_flush = now
+                else:
+                    flush_batch(force=False)  # no-op kalau belum capai BATCH_SIZE
+
+        except (serial.SerialException, OSError) as e:
+            with state.lock:
+                state.serial_connected = False
+            print(f"[bridge] Port serial {SERIAL_PORT} terputus / alat mati: {e}. Mencoba lagi dalam 2 detik...")
+            if ser and ser.is_open:
+                try:
+                    ser.close()
+                except Exception:
+                    pass
+            time.sleep(2)
+        except Exception as e:
+            with state.lock:
+                state.serial_connected = False
+            print(f"[bridge] Error tak terduga serial reader: {e}. Mencoba lagi...")
+            if ser and ser.is_open:
+                try:
+                    ser.close()
+                except Exception:
+                    pass
+            time.sleep(2)
 
 
 def run_local_api():

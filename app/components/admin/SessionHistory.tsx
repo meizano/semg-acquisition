@@ -2,7 +2,7 @@
 import { useState, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { BarChart3, Trash2, Loader2, Pencil, X, ExternalLink } from 'lucide-react'
+import { BarChart3, Trash2, Loader2, Pencil, X, ExternalLink, Activity, Layers } from 'lucide-react'
 
 interface SessionRow {
   id: string
@@ -15,8 +15,10 @@ interface SessionRow {
   status: string
   gestureName: string
   gestureLabel: string
+  sessionTime?: string
   configName: string
   eventCount: number
+  emgCount: number
   startedAt: string | null
   completedAt: string | null
   createdAt: string
@@ -88,10 +90,20 @@ export default function SessionHistory({ sessions }: { sessions: SessionRow[] })
             Lihat semua sesi eksperimen dan export event log
           </p>
         </div>
-        <Link href="/admin/sessions/new" className="btn btn-primary text-sm">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-          Buat Sesi Baru
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/admin/participants" className="btn btn-secondary text-sm flex items-center gap-1.5 text-amber-300 border-amber-500/30 hover:border-amber-400">
+            <Layers size={16} />
+            Rekap 24 Gesture (Pagi/Sore)
+          </Link>
+          <Link href="/admin/status" className="btn btn-secondary text-sm flex items-center gap-1.5 text-teal-300 border-teal-500/30 hover:border-teal-400">
+            <Activity size={16} />
+            Audit Status Partisipan
+          </Link>
+          <Link href="/admin/sessions/new" className="btn btn-primary text-sm">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            Buat Sesi Baru
+          </Link>
+        </div>
       </div>
 
       {sessions.length === 0 ? (
@@ -108,7 +120,7 @@ export default function SessionHistory({ sessions }: { sessions: SessionRow[] })
                 <th>Partisipan</th>
                 <th>Konfigurasi</th>
                 <th>Status</th>
-                <th>Events</th>
+                <th>Data / Events</th>
                 <th>Durasi</th>
                 <th>Waktu</th>
                 <th className="text-right">Aksi</th>
@@ -123,12 +135,51 @@ export default function SessionHistory({ sessions }: { sessions: SessionRow[] })
                 return (
                   <tr key={s.id}>
                     <td>
-                      <div>
-                        <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{s.gestureLabel}</span>
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{s.gestureName}</p>
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <span className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{s.gestureLabel}</span>
+                          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{s.gestureName}</p>
+                        </div>
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border shrink-0 ${
+                          s.sessionTime === 'SORE'
+                            ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        }`}>
+                          {s.sessionTime === 'SORE' ? '⛅ Sore' : '☀️ Pagi'}
+                        </span>
                       </div>
                     </td>
-                    <td style={{ color: 'var(--text-secondary)' }}>{s.participantName || '-'}</td>
+                    <td>
+                      <div className="flex flex-col">
+                        <span className="font-bold text-sm text-white">{s.participantName || '-'}</span>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {s.participantId ? (
+                            <Link
+                              href={`/admin/status?id=${encodeURIComponent(s.participantId)}`}
+                              className="text-[11px] text-teal-400 hover:underline font-mono"
+                              title="Audit kelengkapan 12 gesture partisipan ini"
+                            >
+                              {s.participantId} ➔
+                            </Link>
+                          ) : (
+                            <Link
+                              href={`/admin/status?id=${encodeURIComponent(s.participantName || s.id)}`}
+                              className="text-[10px] text-teal-400/80 hover:underline"
+                              title="Audit sesi partisipan ini"
+                            >
+                              Audit ➔
+                            </Link>
+                          )}
+                          <Link
+                            href={`/admin/participants?id=${encodeURIComponent(s.participantName || s.participantId || '')}`}
+                            className="text-[10px] text-amber-400/80 hover:underline font-bold"
+                            title="Buka rekap 24 gesture (Pagi/Sore)"
+                          >
+                            24 Gesture ➔
+                          </Link>
+                        </div>
+                      </div>
+                    </td>
                     <td style={{ color: 'var(--text-secondary)' }}>{s.configName}</td>
                     <td>
                       <span className={`badge ${
@@ -139,7 +190,14 @@ export default function SessionHistory({ sessions }: { sessions: SessionRow[] })
                         {s.status}
                       </span>
                     </td>
-                    <td style={{ color: 'var(--text-secondary)' }}>{s.eventCount}</td>
+                    <td>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-teal-300">
+                          {s.emgCount > 0 ? `${s.emgCount.toLocaleString('id-ID')} EMG` : '0 EMG'}
+                        </span>
+                        <span className="text-[11px] text-white/50">{s.eventCount} events</span>
+                      </div>
+                    </td>
                     <td style={{ color: 'var(--text-secondary)' }}>
                       {duration ? `${duration}s` : '-'}
                     </td>
@@ -163,19 +221,19 @@ export default function SessionHistory({ sessions }: { sessions: SessionRow[] })
                             Kontrol
                           </Link>
                         )}
-                        {s.eventCount > 0 && (
+                        {(s.eventCount > 0 || s.emgCount > 0) && (
                           <>
                             <button
-                              className="btn btn-ghost text-xs py-1 px-2"
+                              className="btn btn-ghost text-xs py-1 px-2 text-teal-300 border border-teal-500/30 hover:bg-teal-500/10"
                               onClick={() => downloadExport(s.id, 'csv')}
-                              title="Export CSV"
+                              title="Export CSV (dengan 6-channel EMG)"
                             >
                               CSV
                             </button>
                             <button
-                              className="btn btn-ghost text-xs py-1 px-2"
+                              className="btn btn-ghost text-xs py-1 px-2 text-teal-300 border border-teal-500/30 hover:bg-teal-500/10"
                               onClick={() => downloadExport(s.id, 'json')}
-                              title="Export JSON"
+                              title="Export JSON (dengan 6-channel EMG)"
                             >
                               JSON
                             </button>
