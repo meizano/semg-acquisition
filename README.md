@@ -1,5 +1,7 @@
 # sEMG Acquisition System
 
+🇬🇧 English · 🇮🇩 [Bahasa Indonesia](README.id.md)
+
 A data-acquisition system for recording labelled surface electromyography (sEMG) of
 12 finger-palm gestures, built for the research project *Machine Learning-Based sEMG
 Finger-Palm Gesture Classification for One-Handed Mixed Reality Text Input*.
