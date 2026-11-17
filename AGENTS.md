@@ -15,12 +15,17 @@ tiga komponen yang saling terhubung:
    Persiapan → Aksi → Istirahat per repetisi gesture (`SessionRunner.tsx`),
    mencatat semua transisi fase ke `EventLog`, DAN secara aktif melaporkan
    fase aktif ke Python Bridge lewat local HTTP API setiap rAF tick.
-2. **Firmware** (`multiple_emg_sensors_terbaru.ino`, di luar repo ini, lokasi
-   terpisah di project Arduino) — berjalan di Seeed XIAO nRF52840, membaca 6
-   channel sensor EMG "Hello SEMG by Cheez", mengirim raw + processed value
-   lewat **Serial satu arah** (device → komputer saja). Firmware **tidak**
-   tahu apa-apa soal fase, sesi, atau timing — sengaja dibuat "bodoh" dan
-   stabil untuk menghindari jitter sampling akibat parsing command masuk.
+2. **Firmware** (`firmware/emg_1khz/emg_1khz.ino` + `emg_dsp.h`) — berjalan
+   di Seeed XIAO nRF52840 (Sense), membaca 6 channel sensor EMG "Hello SEMG by
+   Cheez" **tepat 1000 Hz** (TIMER4 → PPI → SAADC scan + EasyDMA, CPU tidak
+   ada di jalur sampling), mengirim frame biner raw + envelope lewat **Serial
+   satu arah** (device → komputer saja). Firmware **tidak** tahu apa-apa soal
+   fase atau sesi — sengaja dibuat "bodoh" dan stabil. Satu-satunya info waktu
+   yang dikirim adalah nomor urut sampel sejak device menyala.
+   Board: core "Seeed nRF52 Boards" (`Seeeduino:nrf52:xiaonRF52840Sense`,
+   direkomendasikan) atau core mbed (`Seeeduino:mbed:xiaonRF52840Sense`).
+   Firmware lama (analogRead + delay, nyatanya ~150 Hz tidak teratur) ada di
+   riwayat git dengan nama `multiple_emg_sensors_terbaru.ino`.
 3. **Python Bridge** (`emg_bridge.py`, dijalankan terpisah di laptop/PC,
    tidak masuk repo Next.js ini) — punya DUA peran sekaligus:
    - Membaca data sensor dari Serial port secara kontinu.
@@ -55,12 +60,15 @@ berpotensi salah label di sekitar garis batas transisi fase.
 
 ```
 [XIAO nRF52840 + 6ch EMG]
-        │ Serial, satu arah, kontinu: "r1,r2,r3,r4,r5,r6,p1,p2,p3,p4,p5,p6\n"
+        │ Serial, satu arah, kontinu: 1 frame biner tiap 10 ms
+        │ = nomor urut + 10 sampel x (6 raw + 6 envelope) + CRC16
         │ (firmware tidak tahu fase/sesi sama sekali)
         ▼
 [Python Bridge - emg_bridge.py, laptop/PC yang sama]
-   ├─ Serial reader thread: parse baris, tempel sampleIndex + elapsedMs +
-   │  phase (dari state lokal) + isTransition (dari transition guard)
+   ├─ Serial reader thread: parse frame + cek CRC, tempel sampleIndex +
+   │  elapsedMs (dari nomor urut device) + phase (dari state lokal) +
+   │  isTransition (dari transition guard)
+   ├─ Uploader thread: kirim batch ke Next.js (retry), terpisah dari reader
    └─ FastAPI server (port 8000):
         PUT  /phase          <── dipanggil Next.js tiap rAF tick (throttled)
         POST /session/start  <── dipanggil Next.js saat SESSION_START
@@ -140,9 +148,10 @@ berisiko tercatat dengan label fase yang sudah basi (misal masih
 `PREPARATION` padahal sebenarnya sudah masuk `ACTION`).
 
 Mitigasi: setiap kali state `currentPhase` di bridge berubah, `N` sample
-pertama berikutnya (`TRANSITION_GUARD_SAMPLES` di `emg_bridge.py`, default 5,
-**belum divalidasi dengan hardware nyata** — sesuaikan setelah sampling rate
-aktual terukur) ditandai `EmgRecord.isTransition = true`. Sample ini **tidak
+pertama berikutnya (`TRANSITION_GUARD_MS` di `emg_bridge.py`, default 50 ms =
+50 sample pada 1000 Hz, mencakup jeda Next.js → bridge plus satu frame
+firmware 10 ms; **belum diukur dengan hardware nyata**) ditandai
+`EmgRecord.isTransition = true`. Sample ini **tidak
 dibuang** di level bridge/DB — keputusan dibuang atau dipakai diserahkan ke
 tahap preprocessing, supaya tetap fleksibel (misal kalau ternyata delay
 nyata jauh lebih kecil dari estimasi, sample ini masih bisa dipakai).
@@ -156,23 +165,32 @@ mulai/berhenti, fase aktif, transition guard) ada di sisi Python Bridge,
 bukan firmware.
 
 **Implikasi:** belum ada mekanisme reset counter via tombol fisik di
-firmware. `sampleIndex` dan `elapsedMs` di-generate **di sisi Bridge**
-(bukan dikirim dari firmware), direset ke 0 setiap `POST /session/start`
-diterima dari Next.js. Kalau ke depannya dibutuhkan tombol fisik di device
+firmware. Firmware hanya mengirim nomor urut sampel sejak menyala (satu
+clock: timer hardware device). Bridge menjadikannya `sampleIndex` = nomor urut
+dikurangi nomor urut sampel pertama setelah `POST /session/start`, dan
+`elapsedMs` = `sampleIndex` × 1000 / 1000 Hz. Sample yang hilang (USB macet,
+ring buffer firmware penuh) terlihat sebagai **celah** di `sampleIndex`,
+bukan disamarkan. Kalau device reset di tengah sesi, bridge melanjutkan
+`sampleIndex` dari angka terakhir. Kalau ke depannya dibutuhkan tombol fisik di device
 untuk memulai sesi tanpa laptop, ini perlu didiskusikan ulang karena akan
 melanggar prinsip "firmware bodoh, satu arah" di atas.
 
-### 5. Format baris Serial
-Tiap baris dari firmware = teks CSV satu baris, diakhiri `\n`:
+### 5. Format frame Serial
+Firmware mengirim satu frame biner tiap 10 ms (little-endian, definisi
+lengkap di `firmware/emg_1khz/emg_dsp.h`, parser di `FrameParser` pada
+`emg_bridge.py` — keduanya harus diubah bersama):
 ```
-r1,r2,r3,r4,r5,r6,p1,p2,p3,p4,p5,p6
+A5 5A | version=1 | scans=10 | seq u32 | raw u16[10][6] | env u32[10][6] | CRC-16/CCITT-FALSE
 ```
-12 nilai float, urutan tetap: 6 raw channel diikuti 6 processed/envelope
-channel, index channel 0-5 sesuai `PINS[0..5]` (A0-A5) di firmware. Bridge
-mem-parse ini dengan regex sederhana (`LINE_PATTERN` di `emg_bridge.py`) —
-**belum diverifikasi terhadap output Serial sungguhan**, karena firmware
-saat ini belum tentu mencetak format ini lewat `Serial.print()` — masih
-perlu disesuaikan sebelum tes end-to-end.
+370 byte per frame (37 KB/s). `raw` = ADC 12-bit (0..4095 = 0..3.6 V),
+`env` = sinyal setelah high-pass 20 Hz, notch 50 Hz, low-pass 150 Hz,
+dikuadratkan. Urutan channel A0..A5 → `r1..r6` dan `p1..p6`. Data yang
+direkam sebelum firmware ini (Juli–November 2026) memakai ADC 10-bit,
+~150 Hz, dan kolomnya tersimpan selang-seling (`r1`=raw ch1, `r2`=envelope
+ch1, …) — jangan digabung langsung dengan rekaman baru.
+
+Untuk cek manual di Serial Monitor, compile dengan `OUTPUT_BINARY 0`
+(CSV `seq,r1..r6,p1..p6`); bridge hanya menerima mode biner.
 
 ## Skema database tambahan (di luar starter Next.js default)
 
@@ -277,20 +295,18 @@ menyentuh data flow EMG.
 
 **Belum diverifikasi** (butuh hardware/runtime asli, tidak tersedia di
 sandbox yang dipakai untuk mengembangkan ini):
-- Firmware `.ino` belum pernah dites benar-benar mengirim format baris CSV
-  yang diasumsikan bridge — kemungkinan masih perlu disesuaikan supaya
-  mencetak format ini lewat `Serial.print()`/`Serial.println()`.
-- `emg_bridge.py` belum pernah dijalankan terhadap Serial port sungguhan —
-  baud rate, format baris, dan timing baca (`ser.readline()` blocking vs
-  sampling rate aktual) semua masih asumsi.
+- Firmware `emg_1khz` sudah lolos compile di kedua core, dan format frame +
+  filter-nya sudah dites di PC (kode `emg_dsp.h` yang sama dikompilasi native,
+  frame-nya di-parse `FrameParser`). **Belum** dijalankan di XIAO sungguhan:
+  laju 1000 Hz, throughput USB, dan nilai ADC dari sensor masih perlu dicek
+  lewat `GET /health` (`sampleRateHz`, `droppedSamples`, `crcErrors`).
 - Local FastAPI server (port 8000) belum pernah dites menerima request
   sungguhan dari `SessionRunner.tsx` di browser — termasuk soal apakah
   throttle 100ms (`PHASE_REPORT_THROTTLE_MS`) sudah pas atau perlu
   disesuaikan setelah dites nyata.
-- Nilai `TRANSITION_GUARD_SAMPLES` (default 5) adalah tebakan awal, **belum
-  dikalibrasi** terhadap sampling rate aktual hardware — setelah sampling
-  rate terukur, hitung ulang berapa sample yang representasinya cukup untuk
-  menutupi delay HTTP round-trip lokal yang terukur nyata.
+- Nilai `TRANSITION_GUARD_MS` (default 50 ms = 50 sample pada 1000 Hz) adalah
+  perkiraan, **belum dikalibrasi** terhadap jeda Next.js → bridge yang terukur
+  nyata.
 - `prisma.emgRecord.createMany` di `POST /api/sessions/[id]/emg/route.ts`
   belum pernah dites dengan Prisma Client yang sudah di-generate dari
   schema baru — pastikan jalankan `npx prisma generate` setelah migration.
